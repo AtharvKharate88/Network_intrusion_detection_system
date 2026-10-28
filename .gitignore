@@ -1,0 +1,52 @@
+# Python virtual environments and local installs
+.venv/
+venv/
+env/
+ENV/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Jupyter / notebook state
+.ipynb_checkpoints/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs, temporary files, and generated outputs
+*.log
+logs/
+log/
+tmp/
+temp/
+coverage/
+htmlcov/
+*.sqlite3
+*.db
+
+# Large or local-only data that should not be redistributed
+# The project trains on CIC-IDS2017 flow data; keep it local unless you explicitly want to publish it.
+dataset/
+
+# Optional: local prediction or testing artifacts not intended for version control
+*.json
+!backend/artifacts/*.json
+!ml/*.ipynb
+
+# Keep model artifacts tracked only if intentionally published
+# The current project stores the trained XGBoost model and metadata in backend/artifacts/.
+# Do not add local runtime dumps or test outputs here unless they are repo-approved.

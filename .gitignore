@@ -29,6 +29,8 @@ Thumbs.db
 
 # Logs, temporary files, and generated outputs
 *.log
+node_modules/
+frontend/dist/
 logs/
 log/
 tmp/
@@ -45,6 +47,8 @@ dataset/
 # Optional: local prediction or testing artifacts not intended for version control
 *.json
 !backend/artifacts/*.json
+!frontend/package.json
+!frontend/package-lock.json
 !ml/*.ipynb
 
 # Keep model artifacts tracked only if intentionally published

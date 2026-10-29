@@ -38,8 +38,21 @@ def predict(
         flow_id=request.flow_id,
         predicted_class=result["predicted_class"],
         confidence=result["confidence"],
+        source_ip=(
+            str(request_data["source_ip"])
+            if request_data.get("source_ip") is not None
+            else None
+        ),
+        destination_ip=(
+            str(request_data["destination_ip"])
+            if request_data.get("destination_ip") is not None
+            else None
+        ),
+        source_port=request_data.get("source_port"),
+        destination_port=request_data.get("destination_port"),
         alert=result["alert"],
     )
+
 
     db.add(db_event)
 

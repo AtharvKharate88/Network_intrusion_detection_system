@@ -1,13 +1,17 @@
 
-from typing import Any
+import math
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, model_validator
 
 
 class PredictionRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     flow_id: str = Field(min_length=1, max_length=100)
+    source_ip: IPvAnyAddress | None = None
+    destination_ip: IPvAnyAddress | None = None
+    source_port: int | None = Field(default=None, ge=0, le=65535)
+    destination_port: int | None = Field(default=None, ge=0, le=65535)
 
     @model_validator(mode="after")
     def validate_model_features(self):
@@ -33,6 +37,10 @@ class PredictionRequest(BaseModel):
             ):
                 raise ValueError(
                     f"Feature '{name}' must be numeric."
+                )
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"Feature '{name}' must be finite."
                 )
 
         return self

@@ -36,7 +36,7 @@ A machine-learning-based Network Intrusion Detection System (NIDS) built around 
 | Database integration | Implemented | SQLAlchemy + PostgreSQL/Neon configuration |
 | Event persistence | Implemented | Prediction and event records saved to `network_events` |
 | Training notebook | Implemented | The ML pipeline is in `ml/nids_training.ipynb` |
-| Frontend React app | Planned | Not present in this repo at the time of inspection |
+| Frontend React app | Implemented | `frontend/` dashboard reads live API event data |
 | Real-time packet capture / live monitoring | Planned | Not implemented |
 | Automatic blocking / active mitigation | Planned | Not implemented |
 | Production deployment | Planned | Not implemented |
@@ -65,6 +65,8 @@ The following features were confirmed in the codebase during inspection:
 - Event creation and listing endpoints under `/api/events`
 - Basic database initialization via `backend/app/init_db.py`
 - Event persistence for `flow_id`, predicted class, confidence, alert flag, and timestamps
+- Model contract endpoint at `/api/model`, event filters, and `/api/events/stats` aggregates
+- React command-center dashboard with event filters and event inspection
 
 ## Architecture overview
 
@@ -139,13 +141,38 @@ Usage notes:
 
 ## Model evaluation results
 
-No training metrics, classification reports, confusion matrices, or validation-accuracy summaries were found in the checked-in notebook output or saved model artifacts. The repository therefore does not include a verified evaluation report to cite.
+The saved artifact was evaluated locally using the notebook's preprocessing and
+label grouping, concatenated CIC-IDS2017 CSVs, and the same stratified
+`train_test_split(test_size=0.20, random_state=42)` protocol. This is an
+offline benchmark, not live-traffic validation or an independent-day test.
 
-This means:
+| Metric | Result |
+| --- | ---: |
+| Held-out rows | 565,576 |
+| Accuracy | 0.9992609 |
+| Macro-F1 | 0.9232179 |
+| PortScan recall | 0.999622 |
 
-- model accuracy is not documented in this repo,
-- no performance numbers should be reported as proof of real-world generalization,
-- and confidence should be treated as the model's predicted probability, not a guarantee of correctness.
+Per-class results:
+
+| Class | Precision | Recall | F1 | Support |
+| --- | ---: | ---: | ---: | ---: |
+| Bot | 0.913580 | 0.757033 | 0.827972 | 391 |
+| BruteForce | 0.999638 | 0.998915 | 0.999277 | 2,766 |
+| DDoS | 0.999922 | 0.999883 | 0.999902 | 25,605 |
+| DoS | 0.998472 | 0.999623 | 0.999047 | 50,343 |
+| Heartbleed | 1.000000 | 0.500000 | 0.666667 | 2 |
+| Infiltration | 1.000000 | 0.714286 | 0.833333 | 7 |
+| Normal | 0.999716 | 0.999395 | 0.999555 | 454,265 |
+| PortScan | 0.994456 | 0.999622 | 0.997032 | 31,761 |
+| WebAttack | 0.990741 | 0.981651 | 0.986175 | 436 |
+
+The benchmark is subject to dataset leakage and class imbalance risks because
+the split is random across captures. It does not establish performance on
+new networks. The 11-flow local sample was all predicted `Normal` with
+confidence 0.999989–0.999999; those rows describe loopback, localhost, and
+mDNS traffic, not a labelled PortScan test, so no attack prediction was
+forced.
 
 ## Project directory structure
 
@@ -274,6 +301,22 @@ Then open:
 - `http://localhost:8000/api/health`
 - `http://localhost:8000/docs`
 
+## How to run the React dashboard
+
+In a second PowerShell window:
+
+```powershell
+cd "C:\path\to\NIDS\frontend"
+npm install
+npm run dev
+```
+
+Open the Vite URL (normally `http://localhost:5173`). Set
+`VITE_API_URL` if the backend is hosted somewhere other than
+`http://127.0.0.1:8000`. The dashboard displays persisted API events only; it
+does not invent traffic. No events appear until flows are posted to the
+prediction endpoint.
+
 ## API documentation and endpoint descriptions
 
 The FastAPI app exposes the following endpoints based on the confirmed code:
@@ -285,6 +328,8 @@ The FastAPI app exposes the following endpoints based on the confirmed code:
 | `/api/predict` | POST | Predict the class of a flow using the trained model |
 | `/api/events` | POST | Create a manual event record |
 | `/api/events` | GET | List recent events |
+| `/api/events/stats` | GET | Aggregate event counts for the dashboard |
+| `/api/model` | GET | Return the loaded model feature/class contract |
 
 ### `/api/predict`
 
@@ -302,7 +347,7 @@ The `alert` field is set to `true` whenever the predicted class is not `Normal`.
 
 ### `/api/events`
 
-The event routes allow storing or retrieving event history in the PostgreSQL database. `GET /api/events` supports a `limit` query parameter between 1 and 100.
+The event routes allow storing or retrieving event history in the PostgreSQL database. `GET /api/events` supports `limit` (1–100), `alert`, `predicted_class`, `source_ip`, and `destination_ip` filters.
 
 ## Example prediction request and response
 
@@ -393,8 +438,8 @@ The repository currently contains no explicit pytest or unittest suite in the ch
 
 - The backend predicts on precomputed flow features only; it does not read raw packet capture data.
 - The system is a research-oriented proof of concept rather than a hardened production IDS.
-- The repository does not include a full frontend, dashboard, or alert pipeline.
-- Model performance is not documented with verified metrics in the checked-in project files.
+- The frontend is a demonstration dashboard, not a packet-capture UI; it polls persisted API data every five seconds.
+- The reported benchmark is a random held-out split and should not be presented as live or independent-network accuracy.
 - CIC-IDS2017 is class-imbalanced, and rare attack classes are statistically harder to model reliably.
 - The current implementation stores event records but does not perform live packet inspection, active blocking, or automated response actions.
 
@@ -410,11 +455,9 @@ The repository currently contains no explicit pytest or unittest suite in the ch
 
 Planned or recommended next steps include:
 
-- add a proper `requirements.txt` or `pyproject.toml` for reproducible installs,
 - add automated tests for schema validation and model inference,
-- add a React frontend dashboard for monitoring and event review,
 - add a data ingestion or feature-engineering pipeline for real packet or flow extraction,
-- add a model evaluation report and a benchmark section,
+- add a capture-separated and time-separated evaluation report,
 - add CI/CD automation for linting and backend tests,
 - add deployment guidance for Docker, Render, Railway, or a self-hosted server,
 - consider a production-ready logging, alerting, and retention design.

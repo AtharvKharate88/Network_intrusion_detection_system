@@ -1,5 +1,6 @@
 
 import json
+from typing import Any
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +23,7 @@ with METADATA_PATH.open("r", encoding="utf-8") as file:
 
 FEATURES = metadata["features"]
 CLASS_NAMES = metadata["class_names"]
+REMOVED_FEATURES = metadata.get("removed_features", [])
 
 if model.get_booster().num_features() != len(FEATURES):
     raise RuntimeError(
@@ -34,7 +36,7 @@ if model.get_booster().num_features() != 73:
     )
 
 
-def predict_flow(features: dict) -> dict:
+def predict_flow(features: dict[str, Any]) -> dict[str, Any]:
     """Predict an attack category from 73 named flow features."""
 
     missing = [name for name in FEATURES if name not in features]
@@ -69,4 +71,23 @@ def predict_flow(features: dict) -> dict:
         "confidence": confidence,
         "alert": predicted_class != "Normal",
         "model_status": "loaded",
+        "probabilities": {
+            CLASS_NAMES[index]: float(probability)
+            for index, probability in enumerate(probabilities)
+        },
+    }
+
+
+def model_info() -> dict[str, Any]:
+    """Return the immutable model contract used by the API and dashboard."""
+
+    return {
+        "model_type": metadata["model_type"],
+        "feature_count": len(FEATURES),
+        "features": FEATURES,
+        "class_names": CLASS_NAMES,
+        "removed_features": REMOVED_FEATURES,
+        "dataset": metadata.get("dataset"),
+        "training_rows": metadata.get("training_rows"),
+        "testing_rows": metadata.get("testing_rows"),
     }

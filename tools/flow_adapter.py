@@ -78,6 +78,34 @@ FEATURE_MAP = {
     "Idle Min": "idle_min",
 }
 
+# Native CICFlowMeter headers that differ from the model feature names or
+# shortened CSV headers used by the local flow extractor.
+HEADER_ALIASES = {
+    "Destination Port": ("Dst Port",),
+    "Total Fwd Packets": ("Total Fwd Packet",),
+    "Total Backward Packets": ("Total Bwd packets",),
+    "Total Length of Fwd Packets": ("Total Length of Fwd Packet",),
+    "Total Length of Bwd Packets": ("Total Length of Bwd Packet",),
+    "Min Packet Length": ("Packet Length Min",),
+    "Max Packet Length": ("Packet Length Max",),
+    "Packet Length Mean": ("Packet Length Mean",),
+    "Packet Length Std": ("Packet Length Std",),
+    "Packet Length Variance": ("Packet Length Variance",),
+    "CWE Flag Count": ("CWR Flag Count",),
+    "Avg Fwd Segment Size": ("Fwd Segment Size Avg",),
+    "Avg Bwd Segment Size": ("Bwd Segment Size Avg",),
+    "Fwd Header Length.1": ("Fwd Header Length",),
+    "Fwd Avg Bytes/Bulk": ("Fwd Bytes/Bulk Avg",),
+    "Fwd Avg Packets/Bulk": ("Fwd Packet/Bulk Avg",),
+    "Fwd Avg Bulk Rate": ("Fwd Bulk Rate Avg",),
+    "Bwd Avg Bytes/Bulk": ("Bwd Bytes/Bulk Avg",),
+    "Bwd Avg Packets/Bulk": ("Bwd Packet/Bulk Avg",),
+    "Bwd Avg Bulk Rate": ("Bwd Bulk Rate Avg",),
+    "Init_Win_bytes_forward": ("FWD Init Win Bytes",),
+    "Init_Win_bytes_backward": ("Bwd Init Win Bytes",),
+    "min_seg_size_forward": ("Fwd Seg Size Min",),
+}
+
 # Features whose training values are in microseconds, while this
 # extractor reports seconds.
 TIME_FEATURES = {
@@ -119,15 +147,15 @@ def adapt_flow(
 
         source = FEATURE_MAP[feature]
 
-        # Support both shortened CSV headers and CICFlowMeter headers.
-        if source in row:
-            raw_value = row[source]
-        elif feature in row:
-            raw_value = row[feature]
-        else:
+        candidates = (source, feature, *HEADER_ALIASES.get(feature, ()))
+        raw_value = next(
+            (row[name] for name in candidates if name in row),
+            None,
+        )
+        if raw_value is None:
             raise ValueError(
                 f"Missing column for {feature!r}. "
-                f"Expected {source!r} or {feature!r}."
+                f"Expected one of {candidates!r}."
             )
 
         try:

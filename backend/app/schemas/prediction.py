@@ -49,6 +49,5 @@ class PredictionRequest(BaseModel):
 class PredictionResponse(BaseModel):
     flow_id: str
     predicted_class: str
-    confidence: float
     alert: bool
     model_status: str

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { SAMPLES } from "./samples";
+import React, { useCallback, useEffect, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
@@ -385,3 +384,4 @@ export default function App() {
     </div>
   );
 }
+export default App;

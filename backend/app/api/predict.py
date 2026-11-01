@@ -69,7 +69,6 @@ def predict(
     return PredictionResponse(
         flow_id=db_event.flow_id,
         predicted_class=db_event.predicted_class,
-        confidence=db_event.confidence,
         alert=db_event.alert,
         model_status=result["model_status"],
     )

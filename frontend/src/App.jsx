@@ -79,18 +79,17 @@ function App() {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Class</th><th>Source</th><th>Destination</th><th>Confidence</th><th>Time</th></tr></thead>
+              <thead><tr><th>Class</th><th>Source</th><th>Destination</th><th>Time</th></tr></thead>
               <tbody>
                 {events.map((event) => (
                   <tr onClick={() => setSelected(event)} key={event.id}>
                     <td><span className={`badge ${event.alert ? "attack" : "normal"}`}>{event.predicted_class}</span></td>
                     <td>{event.source_ip || "—"}:{event.source_port || "—"}</td>
                     <td>{event.destination_ip || "—"}:{event.destination_port || "—"}</td>
-                    <td><div className="confidence"><span style={{ width: `${event.confidence * 100}%` }} />{(event.confidence * 100).toFixed(2)}%</div></td>
                     <td>{new Date(event.created_at).toLocaleTimeString()}</td>
                   </tr>
                 ))}
-                {!events.length && <tr><td colSpan="5" className="empty">No persisted events yet.</td></tr>}
+                {!events.length && <tr><td colSpan="4" className="empty">No persisted events yet.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -116,7 +115,6 @@ function App() {
           <h2>{selected.predicted_class}</h2>
           <p className="muted">Flow {selected.flow_id}</p>
           <dl>
-            <dt>Confidence</dt><dd>{(selected.confidence * 100).toFixed(3)}%</dd>
             <dt>Source</dt><dd>{selected.source_ip || "—"}:{selected.source_port || "—"}</dd>
             <dt>Destination</dt><dd>{selected.destination_ip || "—"}:{selected.destination_port || "—"}</dd>
             <dt>Observed</dt><dd>{new Date(selected.created_at).toLocaleString()}</dd>

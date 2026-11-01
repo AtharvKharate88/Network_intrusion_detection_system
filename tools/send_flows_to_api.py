@@ -1,4 +1,5 @@
 
+import argparse
 import csv
 import json
 import sys
@@ -19,15 +20,41 @@ from tools.flow_adapter import adapt_flow
 
 
 def main():
-    if not CSV_PATH.exists():
-        raise FileNotFoundError(f"CSV not found: {CSV_PATH}")
+    parser = argparse.ArgumentParser(
+        description="Map a flow CSV to the NIDS model and send predictions."
+    )
+    parser.add_argument(
+        "--csv",
+        type=Path,
+        default=CSV_PATH,
+        help="Flow CSV to send (default: portscan-flows-v2.csv).",
+    )
+    parser.add_argument(
+        "--time-unit",
+        choices=("seconds", "microseconds"),
+        default="seconds",
+        help=(
+            "Unit used by duration and IAT columns. Use 'microseconds' "
+            "for native CICFlowMeter CSV output (default: seconds)."
+        ),
+    )
+    parser.add_argument(
+        "--api-url",
+        default=API_URL,
+        help=f"Prediction API URL (default: {API_URL}).",
+    )
+    args = parser.parse_args()
+
+    csv_path = args.csv.resolve()
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV not found: {csv_path}")
 
     with METADATA_PATH.open(encoding="utf-8") as file:
         metadata = json.load(file)
 
     features = metadata["features"]
 
-    with CSV_PATH.open(
+    with csv_path.open(
         newline="", encoding="utf-8-sig"
     ) as file:
         rows = list(csv.DictReader(file))
@@ -38,29 +65,38 @@ def main():
 
     print(f"Loaded {len(rows)} flows.")
     print(f"Model features: {len(features)}")
-    print(f"Sending predictions to {API_URL}\n")
+    print(f"Time unit: {args.time_unit}")
+    print(f"Sending predictions to {args.api_url}\n")
 
     succeeded = 0
     failed = 0
 
     for index, row in enumerate(rows, start=1):
         try:
-            mapped_features = adapt_flow(row, features)
+            mapped_features = adapt_flow(
+                row,
+                features,
+                time_unit=args.time_unit,
+            )
 
             flow_id = f"csv-flow-meta-{index:04d}"
 
             payload = {
                 "flow_id": flow_id,
-                "source_ip": row.get("src_ip"),
-                "destination_ip": row.get("dst_ip"),
-                "source_port": int(row["src_port"]),
-                "destination_port": int(row["dst_port"]),
+                "source_ip": row.get("src_ip") or row.get("Src IP"),
+                "destination_ip": row.get("dst_ip") or row.get("Dst IP"),
+                "source_port": _optional_int(
+                    row.get("src_port") or row.get("Src Port")
+                ),
+                "destination_port": _optional_int(
+                    row.get("dst_port") or row.get("Dst Port")
+                ),
                 **mapped_features,
             }
 
 
             response = requests.post(
-                API_URL,
+                args.api_url,
                 json=payload,
                 timeout=15,
             )
@@ -88,6 +124,10 @@ def main():
     print("\nSummary")
     print(f"Successful requests: {succeeded}")
     print(f"Failed requests: {failed}")
+
+
+def _optional_int(value: str | None) -> int | None:
+    return int(float(value)) if value not in (None, "") else None
 
 
 if __name__ == "__main__":

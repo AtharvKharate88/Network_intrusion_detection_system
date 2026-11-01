@@ -40,7 +40,13 @@ def find_tshark(explicit_path: str | None) -> str:
     )
 
 
-def capture_pcap(tshark: str, interface: str, duration: int, output: Path) -> None:
+def capture_pcap(
+    tshark: str,
+    interface: str,
+    duration: int,
+    output: Path,
+    capture_filter: str | None = None,
+) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     command = [
         tshark,
@@ -51,6 +57,8 @@ def capture_pcap(tshark: str, interface: str, duration: int, output: Path) -> No
         "-w",
         str(output),
     ]
+    if capture_filter:
+        command[2:2] = ["-f", capture_filter]
     print(f"Starting TShark capture on interface {interface} for {duration}s...")
     result = subprocess.run(command, check=False)
     if result.returncode != 0:
@@ -181,7 +189,7 @@ def send_predictions(flow_csv: Path, api_url: str, metadata_path: Path) -> None:
     print(f"Sending {len(rows)} extracted flows to {api_url}...")
     succeeded = 0
     failed = 0
-    run_id = int(time.time())
+    run_id = time.time_ns()
     for index, row in enumerate(rows, start=1):
         flow_id = f"capture-{run_id}-{index:04d}"
         try:
@@ -213,6 +221,45 @@ def _optional_int(value: str | None) -> int | None:
     return int(float(value)) if value not in (None, "") else None
 
 
+def build_capture_filter(
+    explicit_filter: str | None,
+    client_ip: str | None,
+    server_ip: str | None,
+    server_port: int | None,
+) -> str | None:
+    if explicit_filter and any((client_ip, server_ip, server_port)):
+        raise ValueError(
+            "Use either --capture-filter or the client/server filter options, not both."
+        )
+    if explicit_filter:
+        return explicit_filter
+    if not any((client_ip, server_ip, server_port)):
+        return None
+    if not client_ip or not server_ip:
+        raise ValueError(
+            "--client-ip and --server-ip are both required when building a traffic filter."
+        )
+    expression = f"host {client_ip} and host {server_ip}"
+    if server_port is not None:
+        expression += f" and tcp port {server_port}"
+    return expression
+
+
+def process_capture(
+    pcap: Path,
+    output_dir: Path,
+    flowmeter_dir: Path,
+    tshark: str | None,
+    heap: str,
+    api_url: str,
+    no_send: bool,
+) -> None:
+    flow_csv = extract_flows(pcap, output_dir, flowmeter_dir, tshark, heap)
+    print(f"Flow CSV: {flow_csv}")
+    if not no_send:
+        send_predictions(flow_csv, api_url, METADATA_PATH)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="TShark/CICFlowMeter to NIDS API demonstration pipeline."
@@ -222,6 +269,18 @@ def main() -> None:
     source.add_argument("--interface", help="TShark interface number or name to capture.")
     parser.add_argument("--duration", type=int, default=30, help="Capture duration in seconds.")
     parser.add_argument("--tshark", help="Path to tshark.exe when it is not on PATH.")
+    parser.add_argument(
+        "--capture-filter",
+        help="TShark BPF filter, for example: 'host 192.168.1.20 and host 192.168.1.30 and tcp port 8000'.",
+    )
+    parser.add_argument("--client-ip", help="Laptop K IP address for a host-to-host filter.")
+    parser.add_argument("--server-ip", help="Laptop B IP address for a host-to-host filter.")
+    parser.add_argument("--server-port", type=int, help="Website TCP port for a host-to-host filter.")
+    parser.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Repeat fixed-duration captures until Ctrl+C.",
+    )
     parser.add_argument("--flowmeter-dir", type=Path, default=FLOWMETER_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--api-url", default="http://127.0.0.1:8000/api/predict")
@@ -234,6 +293,16 @@ def main() -> None:
     args = parser.parse_args()
 
     output_dir = args.output_dir.resolve()
+    capture_filter = build_capture_filter(
+        args.capture_filter,
+        args.client_ip,
+        args.server_ip,
+        args.server_port,
+    )
+    if args.continuous and args.pcap:
+        parser.error("--continuous requires --interface, not --pcap.")
+    if args.pcap and capture_filter:
+        parser.error("Capture filters require --interface; they do not apply to --pcap.")
     if args.pcap:
         pcap = args.pcap.resolve()
         if not pcap.is_file():
@@ -242,19 +311,47 @@ def main() -> None:
         if args.duration < 1:
             raise ValueError("--duration must be at least 1 second")
         tshark = find_tshark(args.tshark)
-        pcap = output_dir / f"capture-{time.strftime('%Y%m%d-%H%M%S')}.pcapng"
-        capture_pcap(tshark, args.interface, args.duration, pcap)
+        if capture_filter:
+            print(f"Using TShark capture filter: {capture_filter}")
+        try:
+            while True:
+                pcap = output_dir / (
+                    f"capture-{time.strftime('%Y%m%d-%H%M%S')}-"
+                    f"{time.time_ns() % 1_000_000:06d}.pcapng"
+                )
+                capture_pcap(
+                    tshark,
+                    args.interface,
+                    args.duration,
+                    pcap,
+                    capture_filter,
+                )
+                process_capture(
+                    pcap,
+                    output_dir,
+                    args.flowmeter_dir.resolve(),
+                    args.tshark,
+                    args.heap,
+                    args.api_url,
+                    args.no_send,
+                )
+                if not args.continuous:
+                    break
+                print("Capture chunk complete; starting the next chunk. Press Ctrl+C to stop.")
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("Continuous capture stopped.")
+        return
 
-    flow_csv = extract_flows(
+    process_capture(
         pcap,
         output_dir,
         args.flowmeter_dir.resolve(),
         args.tshark,
         args.heap,
+        args.api_url,
+        args.no_send,
     )
-    print(f"Flow CSV: {flow_csv}")
-    if not args.no_send:
-        send_predictions(flow_csv, args.api_url, METADATA_PATH)
 
 
 if __name__ == "__main__":

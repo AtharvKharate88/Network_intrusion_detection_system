@@ -339,7 +339,6 @@ It returns:
 
 - `flow_id`
 - `predicted_class`
-- `confidence`
 - `alert`
 - `model_status`
 
@@ -385,13 +384,15 @@ Example response:
 {
   "flow_id": "flow-001",
   "predicted_class": "Normal",
-  "confidence": 0.9678,
   "alert": false,
   "model_status": "loaded"
 }
 ```
 
-The exact prediction will vary with the input values. Confidence is the probability assigned by the model for the winning class; it is not a guarantee of correctness.
+The exact prediction will vary with the input values. The model probability is
+kept internally for persisted event records but is intentionally not exposed in
+the prediction response or dashboard because it is not calibrated for
+out-of-distribution traffic.
 
 ## Model artifacts and reproducibility
 

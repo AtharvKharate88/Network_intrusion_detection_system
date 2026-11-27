@@ -1,8 +1,8 @@
-
 import argparse
 import csv
 import json
 import sys
+import uuid
 from pathlib import Path
 
 import requests
@@ -79,7 +79,8 @@ def main():
                 time_unit=args.time_unit,
             )
 
-            flow_id = f"csv-flow-meta-{index:04d}"
+            # Generate a unique flow ID to prevent database conflicts
+            flow_id = f"csv-flow-{uuid.uuid4().hex}"
 
             payload = {
                 "flow_id": flow_id,
@@ -93,7 +94,6 @@ def main():
                 ),
                 **mapped_features,
             }
-
 
             response = requests.post(
                 args.api_url,

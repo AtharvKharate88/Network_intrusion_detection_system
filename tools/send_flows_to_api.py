@@ -10,7 +10,7 @@ import requests
 # Project paths
 ROOT = Path(__file__).resolve().parent.parent
 CSV_PATH = ROOT / "portscan-flows-v2.csv"
-METADATA_PATH = ROOT / "backend" / "artifacts" / "nids_metadata.json"
+METADATA_PATH = ROOT / "backend" / "artifacts" / "nids_metadata_v2.json"
 API_URL = "http://127.0.0.1:8000/api/predict"
 
 # Make the project root importable

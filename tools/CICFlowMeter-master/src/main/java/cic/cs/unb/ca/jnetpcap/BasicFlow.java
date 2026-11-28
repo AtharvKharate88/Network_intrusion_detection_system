@@ -64,11 +64,11 @@ public class BasicFlow {
 		this.activityTimeout = activityTimeout;
 		this.initParameters();
 		this.isBidirectional = isBidirectional;
-		this.firstPacket(packet);
 		this.src = flowSrc;
 		this.dst = flowDst;
 		this.srcPort = flowSrcPort;
 		this.dstPort = flowDstPort;
+		this.firstPacket(packet);
 	}    
     
 	public BasicFlow(boolean isBidirectional,BasicPacketInfo packet, long activityTimeout) {
@@ -119,7 +119,6 @@ public class BasicFlow {
 	
 	
 	public void firstPacket(BasicPacketInfo packet){
-		updateFlowBulk(packet);
 		detectUpdateSubflows(packet);
 		checkFlags(packet);
 		this.flowStartTime = packet.getTimeStamp();
@@ -136,15 +135,16 @@ public class BasicFlow {
 			this.dst = packet.getDst();
 			this.dstPort = packet.getDstPort();
 		}		
-		if(Arrays.equals(this.src, packet.getSrc())){
+		updateFlowBulk(packet);
+		if((!isBidirectional || (Arrays.equals(this.src, packet.getSrc()) && this.srcPort == packet.getSrcPort()))){
 			this.min_seg_size_forward = packet.getHeaderBytes();
 			Init_Win_bytes_forward = packet.getTCPWindow();
-			this.flowLengthStats.addValue((double)packet.getPayloadBytes());
 			this.fwdPktStats.addValue((double)packet.getPayloadBytes());
 			this.fHeaderBytes = packet.getHeaderBytes();
 			this.forwardLastSeen = packet.getTimeStamp();
 			this.forwardBytes+=packet.getPayloadBytes();
 			this.forward.add(packet);
+if(packet.getPayloadBytes() > 0) this.Act_data_pkt_forward++;
 			if(packet.hasFlagPSH()){
 				this.fPSH_cnt++;
 			}
@@ -153,7 +153,6 @@ public class BasicFlow {
 			}
 		}else{
 			Init_Win_bytes_backward = packet.getTCPWindow();
-			this.flowLengthStats.addValue((double)packet.getPayloadBytes());
 			this.bwdPktStats.addValue((double)packet.getPayloadBytes());
 			this.bHeaderBytes = packet.getHeaderBytes();
 			this.backwardLastSeen = packet.getTimeStamp();
@@ -178,24 +177,29 @@ public class BasicFlow {
     	if(isBidirectional){
 			this.flowLengthStats.addValue((double)packet.getPayloadBytes());
 
-    		if(Arrays.equals(this.src, packet.getSrc())){
+            if((!isBidirectional || (Arrays.equals(this.src, packet.getSrc()) && this.srcPort == packet.getSrcPort()))){
 				if(packet.getPayloadBytes() >=1){
 					this.Act_data_pkt_forward++;
 				}
+				if(this.forward.isEmpty()) Init_Win_bytes_forward = packet.getTCPWindow();
 				this.fwdPktStats.addValue((double)packet.getPayloadBytes());
 				this.fHeaderBytes +=packet.getHeaderBytes();
-    			this.forward.add(packet);   
+                this.forward.add(packet);
+                if(packet.hasFlagPSH()) this.fPSH_cnt++;
+                if(packet.hasFlagURG()) this.fURG_cnt++;
     			this.forwardBytes+=packet.getPayloadBytes();
     			if (this.forward.size()>1)
     				this.forwardIAT.addValue(currentTimestamp -this.forwardLastSeen);
     			this.forwardLastSeen = currentTimestamp;
-				this.min_seg_size_forward = Math.min(packet.getHeaderBytes(),this.min_seg_size_forward);
+				this.min_seg_size_forward = (this.forward.size() == 1 ? packet.getHeaderBytes() : Math.min(packet.getHeaderBytes(),this.min_seg_size_forward));
 
     		}else{
 				this.bwdPktStats.addValue((double)packet.getPayloadBytes());
-				Init_Win_bytes_backward = packet.getTCPWindow();
+				if(this.backward.isEmpty()) Init_Win_bytes_backward = packet.getTCPWindow();
 				this.bHeaderBytes+=packet.getHeaderBytes();
     			this.backward.add(packet);
+                if(packet.hasFlagPSH()) this.bPSH_cnt++;
+                if(packet.hasFlagURG()) this.bURG_cnt++;
     			this.backwardBytes+=packet.getPayloadBytes();
     			if (this.backward.size()>1)
     				this.backwardIAT.addValue(currentTimestamp-this.backwardLastSeen);
@@ -206,14 +210,17 @@ public class BasicFlow {
 			if(packet.getPayloadBytes() >=1) {
 				this.Act_data_pkt_forward++;
 			}
+			if(this.forward.isEmpty()) Init_Win_bytes_forward = packet.getTCPWindow();
 			this.fwdPktStats.addValue((double)packet.getPayloadBytes());
 			this.flowLengthStats.addValue((double)packet.getPayloadBytes());
 			this.fHeaderBytes +=packet.getHeaderBytes();
-    		this.forward.add(packet);    		
+            this.forward.add(packet);
+            if(packet.hasFlagPSH()) this.fPSH_cnt++;
+            if(packet.hasFlagURG()) this.fURG_cnt++;
     		this.forwardBytes+=packet.getPayloadBytes();
     		this.forwardIAT.addValue(currentTimestamp-this.forwardLastSeen);
     		this.forwardLastSeen = currentTimestamp;
-			this.min_seg_size_forward = Math.min(packet.getHeaderBytes(),this.min_seg_size_forward);
+			this.min_seg_size_forward = (this.forward.size() == 1 ? packet.getHeaderBytes() : Math.min(packet.getHeaderBytes(),this.min_seg_size_forward));
     	}
 
     	this.flowIAT.addValue(packet.getTimeStamp()-this.flowLastSeen);
@@ -240,7 +247,7 @@ public class BasicFlow {
 
 	public double getDownUpRatio(){
 		if(this.forward.size() > 0){
-			return (double)(this.backward.size()/this.forward.size());
+			return ((double)this.backward.size()/this.forward.size());
 		}
 		return 0;
 	}
@@ -341,7 +348,7 @@ public class BasicFlow {
 	}
 
 	private long sfLastPacketTS=-1;
-	private int sfCount=0;
+	private int sfCount=1;
 	private long sfAcHelper=-1;
 
 	void detectUpdateSubflows( BasicPacketInfo packet ){
@@ -381,7 +388,7 @@ public class BasicFlow {
 
 	public void updateFlowBulk (BasicPacketInfo packet){
 
-		if(this.src == packet.getSrc()){
+		if(!isBidirectional || (Arrays.equals(this.src, packet.getSrc()) && this.srcPort == packet.getSrcPort())){
 			updateForwardBulk(packet,blastBulkTS);
 		}else {
 			updateBackwardBulk(packet,flastBulkTS);
@@ -621,12 +628,12 @@ public class BasicFlow {
 			dump+="0,0,0,0,";
 		}
     	// flow duration is in microseconds, therefore packets per seconds = packets / (duration/1000000)
-    	dump+=((double)(this.forwardBytes+this.backwardBytes))/((double)flowDuration/1000000L)+",";    			
-    	dump+=((double)packetCount())/((double)flowDuration/1000000L)+",";
-    	dump+=this.flowIAT.getMean()+",";
-    	dump+=this.flowIAT.getStandardDeviation()+",";
-    	dump+=this.flowIAT.getMax()+",";
-    	dump+=this.flowIAT.getMin()+",";    	
+        dump+=getFlowBytesPerSec()+",";
+        dump+=getFlowPacketsPerSec()+",";
+        dump+=(flowIAT.getN() > 0 ? flowIAT.getMean() : 0.0)+",";
+        dump+=(flowIAT.getN() > 0 ? flowIAT.getStandardDeviation() : 0.0)+",";
+        dump+=(flowIAT.getN() > 0 ? flowIAT.getMax() : 0.0)+",";
+        dump+=(flowIAT.getN() > 0 ? flowIAT.getMin() : 0.0)+",";
     	if(this.forward.size()>1){
 			dump+=this.forwardIAT.getSum()+",";
         	dump+=this.forwardIAT.getMean()+",";
@@ -912,11 +919,11 @@ public class BasicFlow {
 	
 	public double getFlowBytesPerSec(){
 		//flow duration is in microseconds, therefore packets per seconds = packets / (duration/1000000)
-		return ((double)(forwardBytes+backwardBytes))/((double)getFlowDuration()/1000000L);
+		return getFlowDuration() > 0 ? ((double)(forwardBytes+backwardBytes))/((double)getFlowDuration()/1000000L) : 0.0;
 	}
 	
 	public double getFlowPacketsPerSec() {
-		return ((double)packetCount())/((double)getFlowDuration()/1000000L);
+		return getFlowDuration() > 0 ? ((double)packetCount())/((double)getFlowDuration()/1000000L) : 0.0;
 	}
 	
 	public SummaryStatistics getFlowIAT() {
@@ -1132,12 +1139,12 @@ public class BasicFlow {
     		dump.append(0).append(separator);
     		dump.append(0).append(separator);
 		}
-    	dump.append(((double)(forwardBytes+backwardBytes))/((double)flowDuration/1000000L)).append(separator);//21
-    	dump.append(((double)packetCount())/((double)flowDuration/1000000L)).append(separator);//22
-    	dump.append(flowIAT.getMean()).append(separator);							//23
-    	dump.append(flowIAT.getStandardDeviation()).append(separator);				//24
-    	dump.append(flowIAT.getMax()).append(separator);							//25
-    	dump.append(flowIAT.getMin()).append(separator);							//26
+        dump.append(getFlowBytesPerSec()).append(separator);//21
+        dump.append(getFlowPacketsPerSec()).append(separator);//22
+        dump.append((flowIAT.getN() > 0 ? flowIAT.getMean() : 0.0)).append(separator);							//23
+        dump.append((flowIAT.getN() > 0 ? flowIAT.getStandardDeviation() : 0.0)).append(separator);				//24
+        dump.append((flowIAT.getN() > 0 ? flowIAT.getMax() : 0.0)).append(separator);							//25
+        dump.append((flowIAT.getN() > 0 ? flowIAT.getMin() : 0.0)).append(separator);							//26
     	
     	if(this.forward.size()>1){
         	dump.append(forwardIAT.getSum()).append(separator);						//27

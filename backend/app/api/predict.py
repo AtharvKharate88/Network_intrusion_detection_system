@@ -71,4 +71,5 @@ def predict(
         predicted_class=db_event.predicted_class,
         alert=db_event.alert,
         model_status=result["model_status"],
+        confidence=db_event.confidence,
     )

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, func
+from sqlalchemy import JSON, DateTime, Float, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -58,4 +58,39 @@ class NetworkEvent(Base):
         server_default=func.now(),
         nullable=False,
         index=True,
+    )
+
+class BehavioralAlert(Base):
+    __tablename__ = "behavioral_alerts"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, index=True
+    )
+
+    alert_id: Mapped[str] = mapped_column(
+        String(100), unique=True, index=True
+    )
+
+    alert_type: Mapped[str] = mapped_column(String(50))
+
+    source_ip: Mapped[str] = mapped_column(String(45))
+    destination_ip: Mapped[str] = mapped_column(String(45))
+
+    distinct_ports: Mapped[int] = mapped_column(Integer)
+    destination_ports: Mapped[list] = mapped_column(JSON)
+    window_seconds: Mapped[int] = mapped_column(Integer)
+
+    detection_method: Mapped[str] = mapped_column(String(30))
+    capture_file: Mapped[str] = mapped_column(String(255))
+    session_id: Mapped[str] = mapped_column(String(100), index=True)
+
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True
     )

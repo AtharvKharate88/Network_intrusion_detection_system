@@ -57,3 +57,16 @@ dataset/
 # Keep model artifacts tracked only if intentionally published
 # The current project stores the trained XGBoost model and metadata in backend/artifacts/.
 # Do not add local runtime dumps or test outputs here unless they are repo-approved.
+
+# NIDS local captures and generated traffic data
+/runtime/
+/Datasets/
+
+# Generated CICFlowMeter build outputs
+/tools/CICFlowMeter-master/target/
+
+# Local training outputs
+*.joblib
+*.pkl
+*.npy
+*.npz

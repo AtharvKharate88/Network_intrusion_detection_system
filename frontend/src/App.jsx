@@ -122,7 +122,7 @@ function Sidebar({ active, onNav }) {
       </nav>
       <div className="sidebar-footer">
         <span className="live-dot" />
-        <span>Live monitoring</span>
+        <span>Dashboard</span>
       </div>
     </aside>
   );
@@ -172,7 +172,7 @@ function PredictionPanel({ onResult }) {
   function loadSample(key) {
     const sample = { ...SAMPLES[key] };
     if (sample.flow_id) {
-      sample.flow_id = `${key}-${Date.now().toString().slice(-5)}`;
+      sample.flow_id = `sample-${key}-${crypto.randomUUID()}`;
     }
     setJson(JSON.stringify(sample, null, 2));
     setStatus("idle");
@@ -215,10 +215,10 @@ function PredictionPanel({ onResult }) {
         <h2 className="card-title">Run Prediction</h2>
       </div>
       <div className="sample-row">
-        <span className="sample-label">Load sample:</span>
+        <span className="sample-label">Load captured sample:</span>
         <button className="btn-sample" onClick={() => loadSample("normal")}>✅ Normal Traffic</button>
-        <button className="btn-sample btn-sample-red" onClick={() => loadSample("portscan")}>🔍 Port Scan</button>
-        <button className="btn-sample btn-sample-orange" onClick={() => loadSample("dos")}>⚡ DoS Attack</button>
+        <button className="btn-sample btn-sample-red" onClick={() => loadSample("recon")}>Suspected Reconnaissance</button>
+
       </div>
       <textarea
         className="json-area"
@@ -259,10 +259,18 @@ function ResultCard({ result }) {
         <h2 className="card-title">Prediction Result</h2>
       </div>
       {isAttack
-        ? <div className="result-badge result-badge-attack">⚠️ Attack Detected: <strong>{result.predicted_class}</strong></div>
-        : <div className="result-badge result-badge-safe">✅ Safe / Normal Traffic</div>
+        ? <div className="result-badge result-badge-attack">⚠️ Suspected Attack: <strong>{result.predicted_class}</strong></div>
+        : <div className="result-badge result-badge-safe">✅ Predicted Normal Traffic</div>
       }
       <div className="result-meta">
+        <div className="meta-row">
+          <span className="meta-label">Model score (uncalibrated)</span>
+          <span className="meta-mono">
+            {Number.isFinite(result.confidence)
+              ? (result.confidence * 100).toFixed(1) + "%"
+              : "Unavailable"}
+          </span>
+        </div>
         <div className="meta-row"><span className="meta-label">Flow ID</span><span className="meta-mono">{result.flow_id}</span></div>
         <div className="meta-row"><span className="meta-label">Timestamp</span><span className="meta-mono">{new Date().toLocaleString()}</span></div>
         <div className="meta-row"><span className="meta-label">Model status</span><span className="meta-mono">{result.model_status}</span></div>
@@ -284,19 +292,29 @@ function RecentTable({ events, loading, error }) {
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>Time</th><th>Flow ID</th><th>Predicted Class</th><th>Status</th></tr>
+            <tr><th>Time</th><th>Flow ID</th><th>Source</th><th>Destination</th><th>Predicted Class</th><th>Model Score</th><th>Origin</th><th>Status</th></tr>
           </thead>
           <tbody>
             {events.slice(0, 10).map((ev) => (
               <tr key={ev.id}>
                 <td><span className="mono">{fmtTime(ev.created_at)}</span><br /><span className="sub-text">{fmtDate(ev.created_at)}</span></td>
                 <td className="mono truncate">{ev.flow_id}</td>
+                <td>{ev.source_ip ?? "-"}:{ev.source_port ?? "-"}</td>
+                <td>{ev.destination_ip ?? "-"}:{ev.destination_port ?? "-"}</td>
                 <td>{ev.predicted_class}</td>
-                <td><span className={"badge " + (ev.alert ? "badge-attack" : "badge-normal")}>{ev.alert ? "Attack" : "Normal"}</span></td>
+                <td>{Number.isFinite(ev.confidence)
+                  ? (ev.confidence * 100).toFixed(1) + "%"
+                  : "-"}</td>
+                <td>{ev.flow_id.startsWith("capture-")
+                  ? "Capture"
+                  : ev.flow_id.startsWith("csv-flow-")
+                    ? "CSV replay"
+                    : "Manual / other"}</td>
+                <td><span className={"badge " + (ev.alert ? "badge-attack" : "badge-normal")}>{ev.alert ? "Alert" : "Normal"}</span></td>
               </tr>
             ))}
-            {!loading && events.length === 0 && <tr><td colSpan="4" className="td-empty">No predictions yet — run your first one above.</td></tr>}
-            {loading && events.length === 0 && <tr><td colSpan="4" className="td-empty">Loading…</td></tr>}
+            {!loading && events.length === 0 && <tr><td colSpan="8" className="td-empty">No predictions yet — run your first one above.</td></tr>}
+            {loading && events.length === 0 && <tr><td colSpan="8" className="td-empty">Loading…</td></tr>}
           </tbody>
         </table>
       </div>
@@ -305,9 +323,200 @@ function RecentTable({ events, loading, error }) {
 }
 
 /* ─── root ────────────────────────────────────────────────────────────────── */
+function BehavioralAlerts() {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [session, setSession] = useState("all");
+
+  useEffect(() => {
+    let active = true;
+    let busy = false;
+    const controller = new AbortController();
+
+    async function refresh() {
+      if (busy) return;
+      busy = true;
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/behavioral-alerts?limit=50`,
+          { signal: controller.signal }
+        );
+
+        if (!res.ok) {
+          throw new Error(`Behavioral API error: ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (active) {
+          setAlerts(data);
+          setLastUpdated(new Date());
+          setError("");
+        }
+      } catch (e) {
+        if (active) setError(e.message);
+      } finally {
+        busy = false;
+        if (active) setLoading(false);
+      }
+    }
+
+    refresh();
+    const timer = setInterval(refresh, 5000);
+
+    return () => {
+      active = false;
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, []);
+
+  const sessions = [...new Set(alerts.map(a => a.session_id))];
+
+  const visible = session === "all"
+    ? alerts
+    : alerts.filter(a => a.session_id === session);
+
+  function getOrigin(id) {
+    if (id.startsWith("validation-replay-")) return "Validation replay";
+    if (id.startsWith("session-")) return "Capture session";
+    return "Other session";
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="card-header">
+        <AlertIcon color="#D97706" />
+        <h2 className="card-title">Behavioral Security Alerts</h2>
+        <span className="refresh-badge">Auto-refresh 5s</span>
+      </div>
+
+      <p style={{ fontSize: 13, marginBottom: 12 }}>
+        Packet-level detection of suspicious connection patterns.
+        These alerts are separate from AI flow classifications.
+        Suspected scans are not confirmed intrusions.
+      </p>
+
+      <div style={{
+        display: "flex",
+        gap: 12,
+        alignItems: "center",
+        flexWrap: "wrap",
+        marginBottom: 16
+      }}>
+        <span className="badge badge-attack">
+          {visible.length} displayed alerts
+        </span>
+
+        <label>
+          Session:{" "}
+          <select
+            value={session}
+            onChange={e => setSession(e.target.value)}
+            style={{ padding: 6, maxWidth: 260 }}
+          >
+            <option value="all">All recent sessions</option>
+            {sessions.map(id => (
+              <option key={id} value={id}>{id}</option>
+            ))}
+          </select>
+        </label>
+
+        <span className="sub-text">
+          {lastUpdated
+            ? `Last refreshed: ${lastUpdated.toLocaleTimeString()}`
+            : "Waiting for API"}
+        </span>
+      </div>
+
+      {error && (
+        <div className="error-box" style={{ marginBottom: 12 }}>
+          <AlertIcon size={15} color="#DC2626" />
+          <span>{error}. Displayed records may be outdated.</span>
+        </div>
+      )}
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Observed At</th>
+              <th>Alert Type</th>
+              <th>Source IP</th>
+              <th>Destination IP</th>
+              <th>Destination Ports</th>
+              <th>Window</th>
+              <th>Origin / Session</th>
+              <th>Detection Method</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(alert => (
+              <tr key={alert.alert_id}>
+                <td>
+                  <span className="mono">
+                    {fmtTime(alert.observed_at)}
+                  </span>
+                  <br />
+                  <span className="sub-text">
+                    {fmtDate(alert.observed_at)}
+                  </span>
+                </td>
+                <td>
+                  <span className="badge badge-attack">
+                    {alert.alert_type}
+                  </span>
+                </td>
+                <td className="mono">{alert.source_ip}</td>
+                <td className="mono">{alert.destination_ip}</td>
+                <td style={{ minWidth: 140, whiteSpace: "normal" }}>
+                  <strong>{alert.distinct_ports} distinct ports</strong>
+                  <br />
+                  {alert.destination_ports.join(", ")}
+                </td>
+                <td>{alert.window_seconds}s</td>
+                <td>
+                  {getOrigin(alert.session_id)}
+                  <br />
+                  <span className="sub-text">{alert.session_id}</span>
+                  <br />
+                  <span className="sub-text">{alert.capture_file}</span>
+                </td>
+                <td>Behavioral rule</td>
+              </tr>
+            ))}
+
+            {visible.length === 0 && (
+              <tr>
+                <td colSpan="8" className="td-empty">
+                  {loading
+                    ? "Loading behavioral alerts..."
+                    : error
+                      ? "Behavioral alerts unavailable."
+                      : "No behavioral alerts in this selection."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="sub-text" style={{ marginTop: 12 }}>
+        Showing up to 50 recent stored alerts.
+        Capture sessions do not necessarily indicate active monitoring.
+      </p>
+    </div>
+  );
+}
+
+
 export default function App() {
   const [activeNav, setActiveNav] = useState("dashboard");
   const [events, setEvents]       = useState([]);
+  const [modelInfo, setModelInfo] = useState(null);
   const [stats, setStats]         = useState(null);
   const [evError, setEvError]     = useState("");
   const [evLoading, setEvLoading] = useState(true);
@@ -316,14 +525,16 @@ export default function App() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [evRes, stRes] = await Promise.all([
+      const [evRes, stRes, modelRes] = await Promise.all([
         fetch(`${API_BASE}/api/events?limit=10`),
         fetch(`${API_BASE}/api/events/stats`),
+        fetch(`${API_BASE}/api/model`),
       ]);
-      if (!evRes.ok || !stRes.ok) throw new Error("API error");
+      if (!evRes.ok || !stRes.ok || !modelRes.ok) throw new Error("API error");
       const [evData, stData] = await Promise.all([evRes.json(), stRes.json()]);
       setEvents(evData);
       setStats(stData);
+      setModelInfo(await modelRes.json());
       setEvError("");
     } catch (e) {
       setEvError(e.message || "Cannot reach the API.");
@@ -348,8 +559,8 @@ export default function App() {
     fetchData();
   }
 
-  const accuracy = stats && stats.total_events > 0
-    ? ((stats.normal_events / stats.total_events) * 100).toFixed(1) + "%"
+  const alertRate = stats && stats.total_events > 0
+    ? ((stats.total_alerts / stats.total_events) * 100).toFixed(1) + "%"
     : "—";
 
   return (
@@ -358,17 +569,53 @@ export default function App() {
       <div className="main-area">
         <TopBar onNewPrediction={handleNewPrediction} />
         <div className="page-content">
+          <div className="card" style={{ marginBottom: 16 }}>
+            <h2 className="card-title">Active Detection Model</h2>
+            <p>{modelInfo?.model_type ?? "Loading model..."}</p>
+            <p>{modelInfo?.model_version} | {modelInfo?.feature_count} features
+              | {modelInfo?.class_count} categories</p>
+            <p style={{ fontSize: 12, marginTop: 8 }}>
+              {modelInfo?.class_names?.join(" | ")}
+            </p>
+            <p style={{ fontSize: 12, marginTop: 8 }}>
+              Experimental model. Predictions are not confirmed attacks.
+              Dashboard statistics include historical and replayed events.
+            </p>
+          </div>
           <div className="stats-grid">
-            <StatCard label="Total Predictions" value={stats?.total_events}  Ic={ActivityIcon} iconBg="#EFF6FF" iconColor="#3B82F6" valueColor="#1D4ED8" />
-            <StatCard label="Attacks Detected"  value={stats?.total_alerts}  Ic={AlertIcon}    iconBg="#FEF2F2" iconColor="#EF4444" valueColor="#B91C1C" />
+            <StatCard label="All Stored Predictions" value={stats?.total_events}  Ic={ActivityIcon} iconBg="#EFF6FF" iconColor="#3B82F6" valueColor="#1D4ED8" />
+            <StatCard label="Flagged Flows"  value={stats?.total_alerts}  Ic={AlertIcon}    iconBg="#FEF2F2" iconColor="#EF4444" valueColor="#B91C1C" />
             <StatCard label="Normal Traffic"    value={stats?.normal_events} Ic={CheckIcon}    iconBg="#F0FDF4" iconColor="#22C55E" valueColor="#15803D" />
-            <StatCard label="Detection Accuracy" value={accuracy}            Ic={BarIcon}      iconBg="#F5F3FF" iconColor="#8B5CF6" valueColor="#6D28D9" />
+            <StatCard label="Observed Alert Rate" value={alertRate}            Ic={BarIcon}      iconBg="#F5F3FF" iconColor="#8B5CF6" valueColor="#6D28D9" />
           </div>
           <div className="two-col" ref={panelRef}>
             <PredictionPanel onResult={handleResult} />
             <ResultCard result={result} />
           </div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <h2 className="card-title">Historical Classification Distribution</h2>
+            {Object.entries(stats?.attack_distribution ?? {})
+              .sort((a, b) => b[1] - a[1])
+              .map(([category, count]) => (
+                <div key={category} style={{ marginTop: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>{category}</span>
+                    <strong>{count}</strong>
+                  </div>
+                  <div style={{ background: "#E5E7EB", height: 7, borderRadius: 4 }}>
+                    <div style={{
+                      width: `${stats.total_events
+                        ? count / stats.total_events * 100 : 0}%`,
+                      background: category === "Normal" ? "#22C55E" : "#EF4444",
+                      height: 7,
+                      borderRadius: 4
+                    }} />
+                  </div>
+                </div>
+              ))}
+          </div>
           <RecentTable events={events} loading={evLoading} error={evError} />
+          <BehavioralAlerts />
         </div>
       </div>
     </div>

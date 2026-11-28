@@ -51,3 +51,4 @@ class PredictionResponse(BaseModel):
     predicted_class: str
     alert: bool
     model_status: str
+    confidence: float = Field(ge=0.0, le=1.0)

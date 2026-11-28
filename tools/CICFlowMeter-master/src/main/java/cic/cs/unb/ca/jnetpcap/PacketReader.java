@@ -146,22 +146,9 @@ public class PacketReader {
 					packetInfo.setPayloadBytes(udp.getPayloadLength());
 					packetInfo.setHeaderBytes(udp.getHeaderLength());
 					packetInfo.setProtocol(17);			
-				}else {
-					/*logger.debug("other packet Ethernet -> {}"+  packet.hasHeader(new Ethernet()));
-					logger.debug("other packet Html     -> {}"+  packet.hasHeader(new Html()));
-					logger.debug("other packet Http     -> {}"+  packet.hasHeader(new Http()));
-					logger.debug("other packet SLL      -> {}"+  packet.hasHeader(new SLL()));
-					logger.debug("other packet L2TP     -> {}"+  packet.hasHeader(new L2TP()));
-					logger.debug("other packet Sctp     -> {}"+  packet.hasHeader(new Sctp()));
-					logger.debug("other packet PPP      -> {}"+  packet.hasHeader(new PPP()));*/
-
-					int headerCount = packet.getHeaderCount();
-					for(int i=0;i<headerCount;i++) {
-						JHeader header = JHeaderPool.getDefault().getHeader(i);
-						//JHeader hh = packet.getHeaderByIndex(i, header);
-						//logger.debug("getIpv4Info: {} --description: {} ",header.getName(),header.getDescription());
-					}
-				}
+				} else {
+    return null;
+}
 			}
 		} catch (Exception e) {
 			//e.printStackTrace();
@@ -188,9 +175,18 @@ public class PacketReader {
 				packetInfo = new BasicPacketInfo(this.generator);
 				packetInfo.setSrc(this.ipv6.source());
 				packetInfo.setDst(this.ipv6.destination());
-				packetInfo.setTimeStamp(packet.getCaptureHeader().timestampInMillis());			
+                packetInfo.setTimeStamp(packet.getCaptureHeader().timestampInMicros());
 				
 				if(packet.hasHeader(this.tcp)){						
+					packetInfo.setTCPWindow(tcp.window());
+					packetInfo.setFlagFIN(tcp.flags_FIN());
+					packetInfo.setFlagPSH(tcp.flags_PSH());
+					packetInfo.setFlagURG(tcp.flags_URG());
+					packetInfo.setFlagSYN(tcp.flags_SYN());
+					packetInfo.setFlagACK(tcp.flags_ACK());
+					packetInfo.setFlagECE(tcp.flags_ECE());
+					packetInfo.setFlagCWR(tcp.flags_CWR());
+					packetInfo.setFlagRST(tcp.flags_RST());
 					packetInfo.setSrcPort(tcp.source());
 					packetInfo.setDstPort(tcp.destination());
 					packetInfo.setPayloadBytes(tcp.getPayloadLength());
@@ -200,9 +196,11 @@ public class PacketReader {
 					packetInfo.setSrcPort(udp.source());
 					packetInfo.setDstPort(udp.destination());
 					packetInfo.setPayloadBytes(udp.getPayloadLength());
-					packetInfo.setHeaderBytes(tcp.getHeaderLength());
+					packetInfo.setHeaderBytes(udp.getHeaderLength());
 					packetInfo.setProtocol(17);								
-				}		
+				} else {
+    return null;
+}
 			}
 		}catch(Exception e){
 			logger.debug(e.getMessage());
@@ -358,9 +356,18 @@ public class PacketReader {
 				packetInfo = new BasicPacketInfo(idGen);
 				packetInfo.setSrc(protocol.getIpv6().source());
 				packetInfo.setDst(protocol.getIpv6().destination());
-				packetInfo.setTimeStamp(packet.getCaptureHeader().timestampInMillis());			
+                packetInfo.setTimeStamp(packet.getCaptureHeader().timestampInMicros());
 				
 				if(packet.hasHeader(protocol.getTcp())){
+					packetInfo.setTCPWindow(protocol.getTcp().window());
+					packetInfo.setFlagFIN(protocol.getTcp().flags_FIN());
+					packetInfo.setFlagPSH(protocol.getTcp().flags_PSH());
+					packetInfo.setFlagURG(protocol.getTcp().flags_URG());
+					packetInfo.setFlagSYN(protocol.getTcp().flags_SYN());
+					packetInfo.setFlagACK(protocol.getTcp().flags_ACK());
+					packetInfo.setFlagECE(protocol.getTcp().flags_ECE());
+					packetInfo.setFlagCWR(protocol.getTcp().flags_CWR());
+					packetInfo.setFlagRST(protocol.getTcp().flags_RST());
 					packetInfo.setSrcPort(protocol.getTcp().source());
 					packetInfo.setDstPort(protocol.getTcp().destination());
 					packetInfo.setPayloadBytes(protocol.getTcp().getPayloadLength());
@@ -372,7 +379,9 @@ public class PacketReader {
 					packetInfo.setPayloadBytes(protocol.getUdp().getPayloadLength());
 					packetInfo.setHeaderBytes(protocol.getUdp().getHeaderLength());
 					packetInfo.setProtocol(17);								
-				}		
+				} else {
+    return null;
+}
 			}
 		}catch(Exception e){
 			/*
@@ -431,13 +440,8 @@ public class PacketReader {
 					packetInfo.setHeaderBytes(protocol.getUdp().getHeaderLength());
 					packetInfo.setProtocol(17);			
 				} else {
-					int headerCount = packet.getHeaderCount();
-					for(int i=0;i<headerCount;i++) {
-						JHeader header = JHeaderPool.getDefault().getHeader(i);
-						//JHeader hh = packet.getHeaderByIndex(i, header);
-						//logger.debug("getIpv4Info: {} --description: {} ",header.getName(),header.getDescription());
-					}
-				}
+    return null;
+}
 			}
 		} catch (Exception e) {
 			/*

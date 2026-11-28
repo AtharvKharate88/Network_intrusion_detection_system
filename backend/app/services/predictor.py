@@ -11,11 +11,11 @@ import xgboost as xgb
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 ARTIFACT_DIR = BACKEND_DIR / "artifacts"
 
-MODEL_PATH = ARTIFACT_DIR / "nids_xgboost_reduced.json"
-METADATA_PATH = ARTIFACT_DIR / "nids_metadata.json"
+MODEL_PATH = ARTIFACT_DIR / "nids_multiclass_v2.json"
+METADATA_PATH = ARTIFACT_DIR / "nids_metadata_v2.json"
 
 # Load once when the service is imported.
-model = xgb.XGBClassifier()
+model = xgb.XGBClassifier(n_jobs=2)
 model.load_model(str(MODEL_PATH))
 
 with METADATA_PATH.open("r", encoding="utf-8") as file:
@@ -30,14 +30,24 @@ if model.get_booster().num_features() != len(FEATURES):
         "Model feature count does not match metadata."
     )
 
-if model.get_booster().num_features() != 73:
-    raise RuntimeError(
-        "Expected a model trained on 73 features."
-    )
+if len(FEATURES) != metadata["feature_count"]:
+    raise RuntimeError("Invalid metadata feature count.")
+
+if model.n_classes_ != len(CLASS_NAMES):
+    raise RuntimeError("Model class count does not match metadata.")
+
+if len(set(FEATURES)) != len(FEATURES):
+    raise RuntimeError("Duplicate model features.")
+
+if len(set(CLASS_NAMES)) != len(CLASS_NAMES):
+    raise RuntimeError("Duplicate class names.")
+
+if "Normal" not in CLASS_NAMES:
+    raise RuntimeError("Normal class is missing.")
 
 
 def predict_flow(features: dict[str, Any]) -> dict[str, Any]:
-    """Predict an attack category from 73 named flow features."""
+    """Predict an attack category from named flow features."""
 
     missing = [name for name in FEATURES if name not in features]
     if missing:
@@ -83,6 +93,10 @@ def model_info() -> dict[str, Any]:
 
     return {
         "model_type": metadata["model_type"],
+        "model_version": metadata["model_version"],
+        "architecture": metadata["architecture"],
+        "class_count": len(CLASS_NAMES),
+        "time_unit": metadata["time_unit"],
         "feature_count": len(FEATURES),
         "features": FEATURES,
         "class_names": CLASS_NAMES,

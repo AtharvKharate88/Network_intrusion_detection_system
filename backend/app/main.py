@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.events import router as events_router
 from app.api.predict import router as predict_router
+from app.api.behavioral import router as behavioral_router
 from app.db.database import Base, engine
 import app.db.models
 
@@ -24,6 +25,7 @@ app.add_middleware(
 
 app.include_router(events_router)
 app.include_router(predict_router)
+app.include_router(behavioral_router)
 
 
 @app.get("/")
